@@ -1,0 +1,139 @@
+---
+title: "Extended Mapping Assignment"
+author: "Yifan Liu, Zhaosheng Xie"
+date: "11/9/2020"
+output: revealjs::revealjs_presentation
+theme: sky
+---
+
+```{r setup, include=FALSE}
+library(hurricaneexposure)
+library(hurricaneexposuredata)
+library(tidyverse)
+library(dplyr)
+library(magrittr)
+library(readr)
+library(scales)
+library(ggrepel)
+library(base)
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+# Importing Data
+
+The dataset used in this project is from [FEMA](https://www.fema.gov/openfema-data-page/public-assistance-funded-projects-details-v1). 
+
+```{r}
+d1 = read.csv("PublicAssistanceFundedProjectsDetails.csv")
+```
+
+## Data Cleaning
+
+```{r, message=FALSE,warning=FALSE}
+# filter the data from 2009 to 2018 and select related columns
+d1 = separate(col = declarationDate, into = c("declarationYear","others"), sep = "-", remove = FALSE, data = d1)
+d2 = select(d1, c(3,5,8,9,13,15,17,18,19,20))
+d3 = d2 %>% filter(d2$declarationYear %in% c(2009:2018))
+d4 = filter(d3, incidentType=="Hurricane")
+```
+
+```{r,eval= FALSE}
+#checking for NA values
+length(which(!is.na(d4)=="FALSE"))
+```
+
+```{r}
+head(d4)
+```
+
+
+# EDA
+## The plot for Estimate total cost
+```{r}
+# Estimate total cost due to hurricane
+p1 = aggregate(projectAmount~declarationYear, data = d4, FUN = sum)
+p1$declarationYear = as.numeric(p1$declarationYear)
+
+ggplot(data=p1, aes(x = factor(declarationYear), y = projectAmount)) + 
+  geom_bar(stat = "identity") + 
+  labs(x = "Year", y = "Estimated Total Cost in dollars", title = "2009-2018 Estimated Total Cost by Hurricane")
+```
+
+## The plot for Public Assistance grant funding
+```{r}
+# The Public Assistance grant funding
+p2 = aggregate(federalShareObligated~declarationYear, data = d4, FUN = sum)
+p2$declarationYear = as.numeric(p2$declarationYear)
+
+ggplot(data=p2, aes(x = factor(declarationYear), y = federalShareObligated)) + 
+  geom_bar(stat = "identity") + 
+  labs(x = "Year", y = "The Public Assistance Grant Funding in dollars", title = "2009-2018 The Public Assistance grant funding to Hurricane")
+```
+
+## The plot for Proportions of Different Damage Categories
+```{r}
+# Proportions of Different Damage Categories
+t1 = data.frame(table(d4$damageCategoryCode))
+t1 = rename(t1, "Damage_type" = "Var1")
+t1 = t1[order(t1$Freq, decreasing = TRUE),]
+label = as.vector(t1$Damage_type)
+label = paste(label, "(", round(t1$Freq / sum(t1$Freq) * 100, 2), "%)        ", sep = "")
+
+ggplot(t1, aes(x = "", y = Freq, fill = Damage_type)) + 
+  geom_bar(width = 1, stat = "identity") +
+  coord_polar("y", start = 0) + 
+  theme(axis.ticks = element_blank()) + 
+  labs(x = "", y = "", title = "Proportions of Different Damage Categories") +
+  scale_fill_discrete(breaks = t1$Damage_type, labels = label)
+```
+
+# Mapping
+## Map for Estimate Total Cost
+```{r}
+#Estimate Total Cost
+a1 = aggregate(projectAmount~county, data = d4, FUN = sum)
+a2 = aggregate(applicantId~county, data = d4, FUN = unique)
+a2$number = lengths(a2$applicantId)
+m1 = merge(a1, a2)
+for (i in 1:nrow(m1)){
+  m1$subregion[i] = tolower(m1$county[i])
+}
+m1 = select(m1, -c(1,3))
+geo = map_data("county")
+state = map_data("state")
+geo1 = right_join(geo, m1, by = c('subregion'='subregion'))
+```
+
+```{r}
+ggplot() + 
+  ggtitle("Estimated Total Cost") +
+  geom_polygon(data = geo, aes(x = long, y = lat, group = group), color = "grey", fill = "white") +
+  geom_polygon(data = geo1, aes(x = long, y = lat, group = group, fill = projectAmount), color = "grey", size = 0.2, alpha = 1.6) +
+  labs(x = "Longtitude", y = "Latitude", fill = "Estimated Total Cost")+
+  geom_polygon(data = state, aes(x = long, y = lat, group = group), color="black", fill = "lightgray", size = 0.2, alpha = 0.3)
+```
+
+## Map for Public Assistance grant funding
+
+```{r}
+# The Public Assistance grant funding
+a3 = aggregate(federalShareObligated~county, data = d4, FUN = sum)
+a2$number = lengths(a2$applicantId)
+m2 = merge(a3, a2)
+for (i in 1:nrow(m2)){
+  m2$subregion[i] = tolower(m2$county[i])
+}
+m2 = select(m2, -c(1,3))
+geo = map_data("county")
+state = map_data("state")
+geo2 = right_join(geo, m2, by = c('subregion'='subregion'))
+```
+
+```{r}
+ggplot() + 
+  ggtitle("The Public Assistance grant funding") +
+  geom_polygon(data = geo, aes(x = long, y = lat, group = group), color = "grey", fill = "white") +
+  geom_polygon(data = geo2, aes(x = long, y = lat, group = group, fill = federalShareObligated), color = "grey", size = 0.2, alpha = 1.6) +
+  labs(x = "Longtitude", y = "Latitude", fill = "Public Assistance grant funding")+
+  geom_polygon(data = state, aes(x = long, y = lat, group = group), color="black", fill = "lightgray", size = 0.2, alpha = 0.3)
+```
